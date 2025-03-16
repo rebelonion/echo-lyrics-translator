@@ -13,10 +13,15 @@ fun <T> T.listOf(): List<T> {
 fun Lyrics.updateMetadata(extension: Extension<*>): Lyrics {
     return this.copy(
         subtitle = "${extension.name}${if (this.subtitle != null) ": ${this.subtitle}" else ""}",
-        extras = this.extras.plus("lyricHashcode" to extension.id)
+        extras = this.extras.plus(
+            listOf(
+                "lyricExtensionId" to extension.id,
+                "lyricExtensionName" to extension.name
+            )
+        )
     )
 }
 
 fun Lyrics.getIdFromLyric(): String? {
-    return this.extras["lyricHashcode"]
+    return this.extras["lyricExtensionId"]
 }

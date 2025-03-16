@@ -13,9 +13,9 @@ import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingList
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
-import dev.brahmkshatriya.echo.extension.helpers.updateMetadata
 import dev.brahmkshatriya.echo.extension.helpers.getIdFromLyric
 import dev.brahmkshatriya.echo.extension.helpers.translate
+import dev.brahmkshatriya.echo.extension.helpers.updateMetadata
 import me.bush.translator.Language
 
 
@@ -41,6 +41,16 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                 defaultEntryIndex = Language.entries.find { it.code == "en" }
                     ?.let { Language.entries.indexOf(it) - 1 } // -1 to account for auto
                     ?: 0
+            ),
+            SettingList(
+                title = "Prefer Lyrics from",
+                key = "preferLyricsFrom",
+                entryTitles = (lyricsExtensions + musicExtensions)
+                    .filter { it.name != "Lyrics Translator" && it.name != "Offline" && it.name != "Unified Extension" }
+                    .map { it.name },
+                entryValues = (lyricsExtensions + musicExtensions)
+                    .filter { it.name != "Lyrics Translator" && it.name != "Offline" && it.name != "Unified Extension" }
+                    .map { it.name },
             )
         )
     }
@@ -56,6 +66,10 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
         }
         val language = settings.getString("translationLanguage") ?: return Language.ENGLISH
         return Language.entries.find { it.code == language } ?: Language.ENGLISH
+    }
+
+    private fun preferLyricsFrom(): String? {
+        return settings.getString("preferLyricsFrom")
     }
 
     ////--------------------------------------------------------------------------------------------
@@ -109,7 +123,13 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
             }
         }.flatten()
         potentialLyrics.addAll(musicExtensionsLyrics)
-        return potentialLyrics
+        val preferred = preferLyricsFrom() ?: return potentialLyrics
+        //move all lyrics where extras["lyricExtensionName'] == preferred to the front
+        val preferredLyrics =
+            potentialLyrics.filter { it.extras["lyricExtensionName"]?.lowercase() == preferred.lowercase() }
+        val otherLyrics =
+            potentialLyrics.filter { it.extras["lyricExtensionName"]?.lowercase() != preferred.lowercase() }
+        return preferredLyrics + otherLyrics
     }
 
     override fun searchTrackLyrics(clientId: String, track: Track): PagedData<Lyrics> =
@@ -134,6 +154,4 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
     override fun setMusicExtensions(extensions: List<MusicExtension>) {
         musicExtensions = extensions
     }
-
-
 }
