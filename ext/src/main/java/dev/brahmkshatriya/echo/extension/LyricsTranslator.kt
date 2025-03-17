@@ -1,5 +1,6 @@
 package dev.brahmkshatriya.echo.extension
 
+import dev.brahmkshatriya.echo.common.Extension
 import dev.brahmkshatriya.echo.common.LyricsExtension
 import dev.brahmkshatriya.echo.common.MusicExtension
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
@@ -13,9 +14,10 @@ import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingList
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
-import dev.brahmkshatriya.echo.extension.helpers.getIdFromLyric
-import dev.brahmkshatriya.echo.extension.helpers.translate
-import dev.brahmkshatriya.echo.extension.helpers.updateMetadata
+import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.AppException.Companion.runMutatedCatching
+import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.getIdFromLyric
+import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.translate
+import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.updateMetadata
 import me.bush.translator.Language
 
 
@@ -45,12 +47,12 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
             SettingList(
                 title = "Prefer Lyrics from",
                 key = "preferLyricsFrom",
-                entryTitles = (lyricsExtensions + musicExtensions)
-                    .filter { it.name != "Lyrics Translator" && it.name != "Offline" && it.name != "Unified Extension" }
-                    .map { it.name },
-                entryValues = (lyricsExtensions + musicExtensions)
-                    .filter { it.name != "Lyrics Translator" && it.name != "Offline" && it.name != "Unified Extension" }
-                    .map { it.name },
+                entryTitles = lyricsExtensions
+                    .filter { it.name != "Lyrics Translator" }
+                    .map { it.name }.plus("None"),
+                entryValues = lyricsExtensions
+                    .filter { it.name != "Lyrics Translator" }
+                    .map { it.name }.plus("None"),
             )
         )
     }
@@ -80,12 +82,15 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
             return lyrics.translate(selectedLanguage())
         } else {
             val id = lyrics.getIdFromLyric()!!
-            val extension: LyricsClient? =
-                lyricsExtensions.find { it.id == id }?.instance?.value()?.getOrNull()
-                    ?: (musicExtensions.find { it.id == id }?.instance?.value()
-                        ?.getOrNull() as? LyricsClient)
-            return extension?.loadLyrics(lyrics)
-                ?.translate(selectedLanguage()) ?: lyrics
+            val extension =
+                (lyricsExtensions.find { it.id == id } as? Extension<*>)
+                    ?: (musicExtensions.find { it.id == id } as? Extension<*>)
+                    ?: throw Exception("Extension not found")
+            val client: LyricsClient? = extension.instance.value().getOrThrow() as? LyricsClient
+            return runMutatedCatching(extension) {
+                client?.loadLyrics(lyrics)
+                    ?.translate(selectedLanguage()) ?: lyrics
+            }
         }
     }
 
@@ -97,13 +102,15 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                 if (!lyricsExtension.metadata.enabled) {
                     return@mapNotNull null
                 }
-                val extension = lyricsExtension.instance.value().getOrThrow()
+                val client = lyricsExtension.instance.value().getOrThrow()
                 //make sure we don't call ourself
-                if (extension is LyricsTranslator) {
+                if (client is LyricsTranslator) {
                     return@mapNotNull null
                 }
-                extension.searchTrackLyrics(clientId, track).loadFirst()
-                    .map { it.updateMetadata(lyricsExtension) }
+                runMutatedCatching(lyricsExtension) {
+                    client.searchTrackLyrics(clientId, track).loadFirst()
+                        .map { it.updateMetadata(lyricsExtension) }
+                }
             } catch (e: Exception) {
                 null
             }
@@ -114,22 +121,27 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                 if (!musicExtension.metadata.enabled) {
                     return@mapNotNull null
                 }
-                (musicExtension.instance.value().getOrThrow() as? LyricsClient)?.searchTrackLyrics(
-                    clientId,
-                    track
-                )?.loadFirst()?.map { it.updateMetadata(musicExtension) }
+                runMutatedCatching(musicExtension) {
+                    val client = (musicExtension.instance.value().getOrThrow() as LyricsClient)
+                    client.searchTrackLyrics(
+                        clientId,
+                        track
+                    ).loadFirst().map { it.updateMetadata(musicExtension) }
+                }
             } catch (e: Exception) {
                 null
             }
         }.flatten()
         potentialLyrics.addAll(musicExtensionsLyrics)
         val preferred = preferLyricsFrom() ?: return potentialLyrics
-        //move all lyrics where extras["lyricExtensionName'] == preferred to the front
         val preferredLyrics =
             potentialLyrics.filter { it.extras["lyricExtensionName"]?.lowercase() == preferred.lowercase() }
+        val currentClient =
+            potentialLyrics.filter { it.extras["lyricExtensionId"]?.lowercase() == clientId.lowercase() }
         val otherLyrics =
             potentialLyrics.filter { it.extras["lyricExtensionName"]?.lowercase() != preferred.lowercase() }
-        return preferredLyrics + otherLyrics
+                .filter { it.extras["lyricExtensionId"]?.lowercase() != clientId.lowercase() }
+        return preferredLyrics + currentClient + otherLyrics
     }
 
     override fun searchTrackLyrics(clientId: String, track: Track): PagedData<Lyrics> =

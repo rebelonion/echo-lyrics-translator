@@ -1,4 +1,4 @@
-package dev.brahmkshatriya.echo.extension.helpers
+package dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers
 
 import dev.brahmkshatriya.echo.common.Extension
 import dev.brahmkshatriya.echo.common.models.Lyrics
