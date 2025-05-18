@@ -99,7 +99,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
         val potentialLyrics: MutableList<Lyrics> = mutableListOf()
         val lyricsExtensionsLyrics = lyricsExtensions.mapNotNull { lyricsExtension ->
             try {
-                if (!lyricsExtension.metadata.enabled) {
+                if (!lyricsExtension.metadata.isEnabled) {
                     return@mapNotNull null
                 }
                 val client = lyricsExtension.instance.value().getOrThrow()
@@ -108,7 +108,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                     return@mapNotNull null
                 }
                 runMutatedCatching(lyricsExtension) {
-                    client.searchTrackLyrics(clientId, track).loadFirst()
+                    client.searchTrackLyrics(clientId, track).loadList(null).data
                         .map { it.updateMetadata(lyricsExtension) }
                 }
             } catch (e: Exception) {
@@ -118,7 +118,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
         potentialLyrics.addAll(lyricsExtensionsLyrics)
         val musicExtensionsLyrics = musicExtensions.mapNotNull { musicExtension ->
             try {
-                if (!musicExtension.metadata.enabled) {
+                if (!musicExtension.metadata.isEnabled) {
                     return@mapNotNull null
                 }
                 runMutatedCatching(musicExtension) {
@@ -126,7 +126,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                     client.searchTrackLyrics(
                         clientId,
                         track
-                    ).loadFirst().map { it.updateMetadata(musicExtension) }
+                    ).loadList(null).data.map { it.updateMetadata(musicExtension) }
                 }
             } catch (e: Exception) {
                 null
