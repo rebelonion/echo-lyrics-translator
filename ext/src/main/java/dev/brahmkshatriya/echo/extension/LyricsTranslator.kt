@@ -18,9 +18,9 @@ import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.AppException.C
 import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.getIdFromLyric
 import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.translate
 import dev.brahmkshatriya.echo.extension.lyricsTranslator.helpers.updateMetadata
-import me.bush.translator.Language
+import dev.rebelonion.translator.Language
 
-
+@Suppress("unused")
 class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider,
     MusicExtensionsProvider {
 
