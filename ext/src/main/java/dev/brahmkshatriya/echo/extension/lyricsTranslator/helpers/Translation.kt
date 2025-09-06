@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import dev.rebelonion.translator.Language
 import dev.rebelonion.translator.Translator
 
-suspend fun Lyrics.translate(language: Language?): Lyrics {
+suspend fun Lyrics.translate(language: Language?, romanize: Boolean): Lyrics {
     if (language == null) {
         return this
     }
@@ -18,17 +18,17 @@ suspend fun Lyrics.translate(language: Language?): Lyrics {
         title = title,
         subtitle = subtitle,
         lyrics = when (val lyr = this.lyrics) {
-            is Lyrics.Timed -> translate(lyr, language)
-            is Lyrics.Simple -> translate(lyr, language)
+            is Lyrics.Timed -> translate(lyr, language, romanize)
+            is Lyrics.Simple -> translate(lyr, language, romanize)
             else -> lyr
         },
         extras = extras
     )
 }
 
-suspend fun translate(lyrics: Lyrics.Timed, language: Language): Lyrics.Timed {
+suspend fun translate(lyrics: Lyrics.Timed, language: Language, romanize: Boolean): Lyrics.Timed {
     val stings = lyrics.list.map { it.text }
-    val translationMap = translateList(stings, language, hardFail = true) ?: return lyrics
+    val translationMap = translateList(stings, language, hardFail = true, romanize) ?: return lyrics
     val items = mutableListOf<Lyrics.Item>()
     lyrics.list.forEach {
         val translatedText = translationMap[it.text] ?: it.text
@@ -37,8 +37,8 @@ suspend fun translate(lyrics: Lyrics.Timed, language: Language): Lyrics.Timed {
     return Lyrics.Timed(items)
 }
 
-suspend fun translate(lyrics: Lyrics.Simple, language: Language): Lyrics.Simple {
-    val translationMap = translateList(listOf(lyrics.text), language, hardFail = true) ?: return lyrics
+suspend fun translate(lyrics: Lyrics.Simple, language: Language, romanize: Boolean): Lyrics.Simple {
+    val translationMap = translateList(listOf(lyrics.text), language, hardFail = true, romanize) ?: return lyrics
     val translatedText = translationMap[lyrics.text] ?: lyrics.text
     return Lyrics.Simple(translatedText)
 }
@@ -48,7 +48,8 @@ private val translationCache = TimeBasedLRUCache<Map<String, String>>(1000)
 private suspend fun translateList(
     list: List<String>,
     language: Language,
-    hardFail: Boolean = false
+    hardFail: Boolean = false,
+    romanize: Boolean
 ): Map<String, String>? {
     if (list.isEmpty()) {
         return emptyMap()
@@ -87,7 +88,11 @@ private suspend fun translateList(
                     }
 
                     val translated = translatedCatch.getOrNull() ?: return@async null
-                    translated.translatedText.split("\n")
+                    if (romanize) {
+                        (translated.translatedPronunciation ?: translated.translatedText).split("\n")
+                    } else {
+                        translated.translatedText.split("\n")
+                    }
                 }
             }.awaitAll()
 

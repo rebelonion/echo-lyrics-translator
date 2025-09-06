@@ -6,6 +6,9 @@ import dev.brahmkshatriya.echo.common.MusicExtension
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.LyricsClient
 import dev.brahmkshatriya.echo.common.helpers.PagedData
+import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.loadAll
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.models.Lyrics
 import dev.brahmkshatriya.echo.common.models.Track
 import dev.brahmkshatriya.echo.common.providers.LyricsExtensionsProvider
@@ -26,12 +29,17 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
 
     ////--------------------------------------------------------------------------------------------
     // ExtensionClient
-    override val settingItems: List<Setting> by lazy {
-        listOf(
+    override suspend fun getSettingItems(): List<Setting> {
+        return listOf(
             SettingSwitch(
                 title = "Translate Lyrics",
                 key = "translateLyrics",
                 defaultValue = true
+            ),
+            SettingSwitch(
+                title = "Romanize Translated Lyrics",
+                key = "romanizeTranslatedLyrics",
+                defaultValue = false
             ),
             SettingList(
                 title = "Translation Language",
@@ -74,12 +82,16 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
         return settings.getString("preferLyricsFrom")
     }
 
+    private fun romanizeTranslatedLyrics(): Boolean {
+        return settings.getBoolean("romanizeTranslatedLyrics") == true
+    }
+
     ////--------------------------------------------------------------------------------------------
     // LyricsClient
 
     override suspend fun loadLyrics(lyrics: Lyrics): Lyrics {
         if (lyrics.lyrics != null) {
-            return lyrics.translate(selectedLanguage())
+            return lyrics.translate(selectedLanguage(), romanizeTranslatedLyrics())
         } else {
             val id = lyrics.getIdFromLyric()!!
             val extension =
@@ -89,7 +101,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
             val client: LyricsClient? = extension.instance.value().getOrThrow() as? LyricsClient
             return runMutatedCatching(extension) {
                 client?.loadLyrics(lyrics)
-                    ?.translate(selectedLanguage()) ?: lyrics
+                    ?.translate(selectedLanguage(), romanizeTranslatedLyrics()) ?: lyrics
             }
         }
     }
@@ -108,7 +120,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                     return@mapNotNull null
                 }
                 runMutatedCatching(lyricsExtension) {
-                    client.searchTrackLyrics(clientId, track).loadList(null).data
+                    client.searchTrackLyrics(clientId, track).loadAll()
                         .map { it.updateMetadata(lyricsExtension) }
                 }
             } catch (e: Exception) {
@@ -126,7 +138,7 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
                     client.searchTrackLyrics(
                         clientId,
                         track
-                    ).loadList(null).data.map { it.updateMetadata(musicExtension) }
+                    ).loadAll().map { it.updateMetadata(musicExtension) }
                 }
             } catch (e: Exception) {
                 null
@@ -144,10 +156,10 @@ class LyricsTranslator : ExtensionClient, LyricsClient, LyricsExtensionsProvider
         return preferredLyrics + currentClient + otherLyrics
     }
 
-    override fun searchTrackLyrics(clientId: String, track: Track): PagedData<Lyrics> =
+    override suspend fun searchTrackLyrics(clientId: String, track: Track): Feed<Lyrics> =
         PagedData.Single {
             getAllLyrics(clientId, track)
-        }
+        }.toFeed()
 
     ////--------------------------------------------------------------------------------------------
     // LyricsExtensionsProvider
